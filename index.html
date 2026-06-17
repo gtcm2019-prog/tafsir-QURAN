@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>QCF4 Tafsir Interactive v2</title>
+<title>QCF4 Tafsir Interactive</title>
 
 <style>
 body {
@@ -13,6 +13,7 @@ body {
   color: #000;
 }
 
+/* top */
 .controls {
   position: sticky;
   top: 0;
@@ -26,8 +27,10 @@ select {
   padding: 6px 10px;
   border-radius: 6px;
   border: 1px solid #c8b58f;
+  font-family: monospace;
 }
 
+/* page */
 #page-render {
   padding: 50px 20px;
   display: flex;
@@ -35,36 +38,44 @@ select {
   align-items: center;
 }
 
+/* line */
 .mushaf-line {
   display: flex;
-  justify-content: center;
   direction: rtl;
+  justify-content: center;
   width: 100%;
 }
 
+/* word base */
 .mushaf-word {
   font-size: 32px;
-  padding: 0 3px;
+  padding: 0 2px;
   line-height: 2;
+  color: #000;
   cursor: default;
   transition: 0.15s;
 }
 
+/* 🟡 WORD WITH MEANING (UNDERLINED) */
 .has-tafsir {
   text-decoration: underline;
   text-decoration-color: #b38b2a;
+  text-decoration-thickness: 2px;
   cursor: pointer;
 }
 
+/* hover */
 .mushaf-word:hover {
   color: #b38b2a;
 }
 
+/* highlight */
 .highlight {
   background: rgba(179,139,42,0.25);
   border-radius: 4px;
 }
 
+/* popup */
 .popup {
   position: fixed;
   bottom: 20px;
@@ -74,6 +85,7 @@ select {
   border: 1px solid #c8b58f;
   padding: 12px 16px;
   border-radius: 10px;
+  font-family: monospace;
   display: none;
   max-width: 80%;
   white-space: pre-line;
@@ -94,25 +106,40 @@ select {
 
 <script>
 
-const CDN_DATA = "https://raw.githubusercontent.com/MohamadHajjRabee/quran-qcf4/main";
+const CDN_DATA  = "https://raw.githubusercontent.com/MohamadHajjRabee/quran-qcf4/main";
+const CDN_FONTS = "https://cdn.jsdelivr.net/gh/MohamadHajjRabee/quran-qcf4@main";
 
-const popup = document.getElementById("popup");
+const loadedFonts = new Set();
 
-/* 📌 POPUP SMART */
-function showPopup(title, tafsir) {
-  popup.innerHTML = `
-📖 <b>${title}</b>
+/* FONT */
+async function loadFont(fontName) {
+  if (loadedFonts.has(fontName)) return;
 
-🧠 ${tafsir || "No tafsir available"}
-  `;
-  popup.style.display = "block";
+  const file = fontName === "QCF4_QBSML"
+    ? `${fontName}.woff2`
+    : `${fontName}_W.woff2`;
 
-  setTimeout(() => {
-    popup.style.display = "none";
-  }, 4000);
+  const url = `${CDN_FONTS}/fonts-woff2/${file}`;
+
+  const ff = new FontFace(fontName, `url(${url})`);
+  await ff.load();
+  document.fonts.add(ff);
+
+  loadedFonts.add(fontName);
 }
 
-/* 📌 LOAD PAGE */
+/* POPUP */
+function showPopup(text) {
+  const p = document.getElementById("popup");
+  p.textContent = text;
+  p.style.display = "block";
+
+  setTimeout(() => {
+    p.style.display = "none";
+  }, 3500);
+}
+
+/* LOAD PAGE */
 async function loadPage(page) {
   const padded = String(page).padStart(3, "0");
   const res = await fetch(`${CDN_DATA}/pages/${padded}.json`);
@@ -120,41 +147,47 @@ async function loadPage(page) {
   renderPage(data);
 }
 
-/* 📌 RENDER ENGINE (FIXED ARCHITECTURE) */
-function renderPage(data) {
+/* RENDER */
+async function renderPage(data) {
   const container = document.getElementById("page-render");
   container.innerHTML = "";
+
+  const fonts = new Set();
+  fonts.add(data.font);
+
+  data.lines.forEach(line => {
+    line.words.forEach(w => fonts.add(w.font));
+  });
+
+  await Promise.all([...fonts].map(loadFont));
 
   data.lines.forEach(line => {
     const row = document.createElement("div");
     row.className = "mushaf-line";
 
     line.words.forEach(word => {
-
       const span = document.createElement("span");
       span.className = "mushaf-word";
+      span.textContent = word.char;
+      span.style.fontFamily = word.font;
 
-      const text = word.char?.trim() || " ";
-      span.textContent = text;
-
-      /* 🧠 CASE 1: WORD LEVEL TAFSIR */
+      /* 🟡 IF TAFSIR EXISTS → underline + clickable */
       if (word.text && word.text.trim() !== "") {
         span.classList.add("has-tafsir");
 
         span.addEventListener("click", () => {
 
+          // clear old highlight
           document.querySelectorAll(".highlight")
             .forEach(e => e.classList.remove("highlight"));
 
           span.classList.add("highlight");
 
-          showPopup(text, word.text);
+          showPopup(
+`📖 Mot: ${word.char}
+🧠 Tafsir: ${word.text}`
+          );
         });
-      }
-
-      /* 📌 FUTURE CASE: AYAH LEVEL TAFSIR */
-      if (word.ayah_tafsir) {
-        span.dataset.ayahTafsir = word.ayah_tafsir;
       }
 
       row.appendChild(span);
@@ -164,7 +197,7 @@ function renderPage(data) {
   });
 }
 
-/* 📌 SELECT PAGE */
+/* SELECT */
 const sel = document.getElementById("page-select");
 
 for (let i = 1; i <= 604; i++) {
